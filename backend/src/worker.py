@@ -3,10 +3,11 @@ from pathlib import Path
 import redis
 from src.config.database import Base,engine,Session
 from src.config.settings import REDIS_URL
-from src.models import identity,source,run
+from src.models import identity,source,run,attribution
 from src.models.run import Run
 from src.services.calculation import calculate
 from src.services.delivery import tick
+from src.services.attribution import run_job
 Base.metadata.create_all(engine)
 r=redis.Redis.from_url(REDIS_URL)
 while True:
@@ -21,6 +22,12 @@ while True:
      try: job.result=calculate(job.snapshot['sources'],job.snapshot['policy']);job.status='completed'
      except Exception as exc: job.status='failed';job.error=str(exc);traceback.print_exc()
      db.commit()
+  item=r.lpop('attribution-jobs')
+  if item:
+   try:
+    job=json.loads(item)
+    with Session() as db: run_job(db,job)
+   except Exception: traceback.print_exc()
   with Session() as db: tick(db)
  except Exception: traceback.print_exc()
  time.sleep(1)
